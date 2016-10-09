@@ -3,20 +3,38 @@
 set -euo pipefail
 set -x
 
-if [[ $# -eq 0 ]] ; then
+usage() {
   echo wrong cmdline
   exit 1
-fi
+}
+
+TARGET_SIZE=10G
+MEMORY=1024
+SUITE=jessie
+NOOP=false
+
+while getopts ":m:d:s:nh" opt; do
+   case $opt in
+   m )  MEMORY=$OPTARG ;;
+   d )  TARGET_SIZE=$OPTARG ;;
+   s )  SUITE=$OPTARG ;;
+   h )  echo usage ;;
+   n )  NOOP="true" ;;
+   \?)  usage ;;
+   esac
+done
+
+shift $(($OPTIND - 1))
+
+[[ $# -ne 1 ]] && usage
 
 HOSTNAME=$1
 DOMAINNAME=$(hostname -d)
 TARGET_VG=vgvm
 TARGET_LV=lv${HOSTNAME}-vda
-SUITE=jessie
 ARCH=amd64
 EXTRA_PKGS='ssh sudo'
 TARGET_DEV=/dev/mapper/${TARGET_VG}-${TARGET_LV//-/--}
-TARGET_SIZE=${2:-1G}
 TARGET=vm_build
 KERNEL=linux-image-amd64
 
@@ -107,7 +125,7 @@ generate_mac_address(){
 }
 
 generate_virsh_config(){
-  export MEMORY=1024
+  export MEMORY
   export CPU_COUNT=1
   export MAC_ADDRESS=$(generate_mac_address)
   export TARGET_DEV
@@ -126,6 +144,7 @@ cleanup_build_mount(){
   kpartx -d $TARGET_DEV
 }
 
+[[ $NOOP == "true" ]] && exit 0
 create_target_dev
 
 base_install
