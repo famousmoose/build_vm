@@ -54,8 +54,14 @@ run_in_target(){
 }
 
 get_suite_vars() {
+  GRUB_EXTRA=''
   case "$SUITE" in
-    trusty | wily | xenial )
+    xenial )
+      MIRROR=http://archive.ubuntu.com/ubuntu/
+      KERNEL_PKG=linux-image-generic
+      GRUB_EXTRA='net.ifnames=0 biosdevname=0'
+    ;;
+    trusty | wily )
       MIRROR=http://archive.ubuntu.com/ubuntu/
       KERNEL_PKG=linux-image-generic
     ;;
@@ -75,7 +81,7 @@ GRUB_DISTRIBUTOR=sb_release -i -s 2> /dev/null || echo Debian
 GRUB_TERMINAL=console 
 GRUB_SERIAL_COMMAND="serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1"
 GRUB_CMDLINE_LINUX_DEFAULT=""
-GRUB_CMDLINE_LINUX="text console=tty0 console=ttyS0,115200n8"
+GRUB_CMDLINE_LINUX="text console=tty0 console=ttyS0,115200n8 $GRUB_EXTRA"
 EOF
   mkdir -p $TARGET/boot/grub/
   echo "(hd0) ${TARGET_DEV}" >$TARGET/boot/grub/device.map
@@ -204,3 +210,5 @@ configure_base
 cleanup_build_mount
 
 generate_virsh_config 
+
+echo "Done - $HOSTNAME - $MAC_ADDRESS"
