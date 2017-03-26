@@ -5,6 +5,10 @@ set -x
 
 usage() {
   echo wrong cmdline
+  echo $0
+  echo '  -m MEMORY (MB)'
+  echo '  -d DISK SIZE (specify units)'
+  echo '  -s Debian suite (Defaults to Jessie)'
   exit 1
 }
 
@@ -39,7 +43,7 @@ TARGET=vm_build
 KERNEL=linux-image-amd64
 
 DEFAULT_USER=manager
-DEFAULT_PW='$6$vBAxhnQ5j0x7BAs$hwnKNfkPHdq79gjvR1.vJqEO./6AdFICLrglFN8/VHbXTKftz4597ycNN5tLNbEViWA0jtmVMCSmirZMVPB2C1'
+DEFAULT_PW='$6$E.aNBcqra$q1D0Btcd37kneuOfztrHA9ZLyxkUvPT3KMX/ILIfUWDtmOIb.9MqcR34jpEMpttwFWtepZ1.GLlI/uN5MCik4/'
 
 mountlist="dev sys proc"
 
@@ -49,8 +53,21 @@ run_in_target(){
   chroot $TARGET $@
 }
 
+get_suite_vars() {
+  case "$SUITE" in
+    trusty | wily | xenial )
+      MIRROR=http://archive.ubuntu.com/ubuntu/
+      KERNEL_PKG=linux-image-generic
+    ;;
+    * )
+      MIRROR=http://ftp.uk.debian.org/debian/
+      KERNEL_PKG=linux-image-amd64
+    ;;
+  esac
+}
+
 grub_preconfig(){
-  run_in_target apt-get -y install grub-pc  
+  run_in_target apt-get -y --force-yes install grub-pc  
   cat <<EOF > $TARGET/etc/default/grub
 GRUB_DEFAULT=0
 GRUB_TIMEOUT=5
@@ -87,6 +104,32 @@ EOF
 
 }
 
+configure_serial_upstart(){
+  cat - <<EOF > $TARGET/etc/init/ttyS0.conf
+# ttyS0 - getty
+#
+# This service maintains a getty on ttyS0 from the point the system is
+# started until it is shut down again.
+
+start on stopped rc RUNLEVEL=[12345]
+stop on runlevel [!12345]
+
+respawn
+exec /sbin/getty -L 115200 ttyS0 vt102
+EOF
+
+}
+
+configure_serial_getty(){
+  case $SUITE in
+    trusty )
+      configure_serial_upstart
+    * )
+      true
+    ;;
+  esac
+}
+
 configure_base(){
   root_uuid=$(blkid -o value -s UUID ${TARGET_DEV}1)
   run_in_target useradd -m -p $DEFAULT_PW \
@@ -97,16 +140,17 @@ configure_base(){
   grub_preconfig
   run_in_target grub-install '(hd0)'
   rm $TARGET/boot/grub/device.map
-  run_in_target apt-get install -y $KERNEL
+  run_in_target apt-get install -y --force-yes $KERNEL_PKG
   run_in_target update-grub
   echo $HOSTNAME >$TARGET/etc/hostname
   echo "127.0.1.1 $HOSTNAME.$DOMAINNAME $HOSTNAME" > $TARGET/etc/hosts
   echo "UUID=$root_uuid	/ ext4 defaults,relatime,errors=remount-ro 0 1" >$TARGET/etc/fstab
   configure_default_net
+  configure_serial_getty
 }
 
 base_install(){
-  debootstrap --arch=$ARCH --include "$EXTRA_PKGS" $SUITE $TARGET
+  debootstrap --arch=$ARCH --include "$EXTRA_PKGS" $SUITE $TARGET $MIRROR
 }
 
 create_target_dev(){
@@ -137,12 +181,17 @@ generate_virsh_config(){
 }
 
 cleanup_build_mount(){
+  set +euo pipefail
+  run_in_target service irqbalance stop
+  set -euo pipefail
   for mount in $mountlist; do
     umount -l $TARGET/$mount
   done
   umount $TARGET
   kpartx -d $TARGET_DEV
 }
+
+get_suite_vars
 
 [[ $NOOP == "true" ]] && exit 0
 create_target_dev
