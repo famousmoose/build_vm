@@ -97,7 +97,7 @@ auto lo
 iface lo inet loopback
 
 # The primary network interface
-allow-hotplug eth0
+auto eth0
 iface eth0 inet dhcp
 iface eth0 inet6 auto
 EOF
@@ -124,6 +124,7 @@ configure_serial_getty(){
   case $SUITE in
     trusty )
       configure_serial_upstart
+    ;;
     * )
       true
     ;;
